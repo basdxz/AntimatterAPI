@@ -12,6 +12,7 @@ import net.minecraft.util.text.TranslationTextComponent;
 import net.minecraftforge.fluids.FluidStack;
 
 import java.util.ArrayList;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static muramasa.antimatter.materials.MaterialTag.METAL;
@@ -29,7 +30,7 @@ public class Material implements IAntimatterObject {
 
     /** Element Members **/
     private Element element;
-    private String chemicalFormula;
+    private String chemicalFormula = "";
 
     /** Solid Members **/
     private int meltingPoint, blastFurnaceTemp;
@@ -245,13 +246,17 @@ public class Material implements IAntimatterObject {
         }
     }
 
+    public Material mats(Function<ImmutableMap.Builder<Material, Integer>, ImmutableMap.Builder<Material, Integer>> func) {
+        return mats(func.apply(new ImmutableMap.Builder<>()).build());
+    }
+
     public Material mats(ImmutableMap<Material, Integer> stacks) {
-        stacks.entrySet().forEach(e -> processInto.add(new MaterialStack(e.getKey(), e.getValue())));
+        stacks.forEach((k, v) -> processInto.add(new MaterialStack(k, v)));
         return this;
     }
     
     public void setChemicalFormula() {
-    	if (element != null) chemicalFormula = element.getDisplayName();
+    	if (element != null) chemicalFormula = element.getElement();
     	else if (!processInto.isEmpty()) chemicalFormula = String.join("", processInto.stream().map(MaterialStack::toString).collect(Collectors.joining()));
     }
 
