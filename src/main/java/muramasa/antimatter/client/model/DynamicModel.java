@@ -8,7 +8,6 @@ import net.minecraft.client.renderer.TransformationMatrix;
 import net.minecraft.client.renderer.Vector3f;
 import net.minecraft.client.renderer.model.*;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.util.Direction;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.model.IModelConfiguration;
 import net.minecraftforge.client.model.SimpleModelTransform;
@@ -23,48 +22,33 @@ import java.util.function.Function;
 
 public class DynamicModel extends AntimatterModel {
 
-    protected IUnbakedModel modelDefault;
-    protected Int2ObjectOpenHashMap<Triple<String, IUnbakedModel, Direction[]>> modelConfigs;
+    protected AntimatterModel modelBase;
+    protected Int2ObjectOpenHashMap<Triple<String, IUnbakedModel, int[]>> modelConfigs;
 
-    public DynamicModel(IUnbakedModel modelDefault, Int2ObjectOpenHashMap<Triple<String, IUnbakedModel, Direction[]>> modelConfigs) {
-        this.modelDefault = modelDefault;
+    public DynamicModel(AntimatterModel modelBase, Int2ObjectOpenHashMap<Triple<String, IUnbakedModel, int[]>> modelConfigs) {
+        this.modelBase = modelBase;
         this.modelConfigs = modelConfigs;
     }
 
     @Override
-    public IBakedModel bake(IModelConfiguration owner, ModelBakery bakery, Function<Material, TextureAtlasSprite> getter, IModelTransform transform, ItemOverrideList overrides, ResourceLocation loc) {
-        IBakedModel bakedDefault = modelDefault.bakeModel(bakery, getter, transform, loc);
+    public IBakedModel bakeModel(IModelConfiguration owner, ModelBakery bakery, Function<Material, TextureAtlasSprite> getter, IModelTransform transform, ItemOverrideList overrides, ResourceLocation loc) {
+        IBakedModel bakedDefault = modelBase.bakeModel(owner, bakery, getter, transform, overrides, loc);
         Int2ObjectOpenHashMap<IBakedModel> bakedConfigs = new Int2ObjectOpenHashMap<>();
         modelConfigs.forEach((k, v) -> bakedConfigs.put((int)k, AntimatterModelManager.getBaked(v.getLeft(), () -> v.getMiddle().bakeModel(bakery, getter, getModelTransform(transform, v.getRight()), loc))));
         return new DynamicBakedModel(bakedDefault, bakedConfigs).particle(bakedDefault.getParticleTexture(EmptyModelData.INSTANCE));
     }
 
-public TransformationMatrix getRotation(Direction dir) {
-    switch (dir) {
-        case DOWN: return new TransformationMatrix(new Vector3f(0, 0, 0), TransformationHelper.quatFromXYZ(new Vector3f(4.7124f, 0, 0), false), null, null);
-        case UP: return new TransformationMatrix(new Vector3f(0, 0, 0), TransformationHelper.quatFromXYZ(new Vector3f(1.5708f, 0, 0), false), null, null);
-        case NORTH: return new TransformationMatrix(new Vector3f(0, 0, 0), TransformationHelper.quatFromXYZ(new Vector3f(0, 0f, 0), false), null, null);
-        case SOUTH: return new TransformationMatrix(new Vector3f(0, 0, 0), TransformationHelper.quatFromXYZ(new Vector3f(0, 3.1416f, 0), false), null, null);
-        case WEST: return new TransformationMatrix(new Vector3f(0, 0, 0), TransformationHelper.quatFromXYZ(new Vector3f(0, 1.5708f, 0), false), null, null);
-        case EAST: return new TransformationMatrix(new Vector3f(0, 0, 0), TransformationHelper.quatFromXYZ(new Vector3f(0, 4.7124f, 0), false), null, null);
-        default: throw new IllegalStateException("Unhandled direction!");
+    //TODO should rotations be handled by AntimatterModel?
+    public IModelTransform getModelTransform(IModelTransform base, int[] rots) {
+        if (rots[0] == 0 && rots[1] == 0 && rots[2] == 0) return base;
+        return new SimpleModelTransform(new TransformationMatrix(null, TransformationHelper.quatFromXYZ(new Vector3f(rots[0], rots[1], rots[2]), true), null, null));
     }
-}
-
-public IModelTransform getModelTransform(IModelTransform base, Direction[] rotations) {
-    if (rotations == null || rotations.length == 0) return base;
-    TransformationMatrix mat = TransformationMatrix.identity().blockCenterToCorner();
-    for (int i = 0; i < 2; i++) {
-        mat = mat.compose(getRotation(rotations[i]));
-    }
-    return new SimpleModelTransform(mat);
-}
 
     @Override
     public Collection<Material> getTextures(IModelConfiguration owner, Function<ResourceLocation, IUnbakedModel> getter, Set<Pair<String, String>> errors) {
         Set<Material> textures = new HashSet<>();
         modelConfigs.values().forEach(t -> textures.addAll(t.getMiddle().getTextures(getter, errors)));
-        textures.addAll(modelDefault.getTextures(getter, errors));
+        textures.addAll(modelBase.getTextures(owner, getter, errors));
         return textures;
     }
 }
