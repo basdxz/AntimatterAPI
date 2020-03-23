@@ -6,29 +6,33 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import muramasa.antimatter.Antimatter;
-import muramasa.antimatter.Ref;
+import muramasa.antimatter.AntimatterAPI;
 import muramasa.antimatter.client.model.AntimatterModel;
 import muramasa.antimatter.client.model.DynamicModel;
+import muramasa.antimatter.registration.IAntimatterObject;
 import net.minecraft.client.renderer.model.BlockModel;
 import net.minecraft.client.renderer.model.IUnbakedModel;
 import net.minecraft.resources.IResourceManager;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.model.IModelLoader;
-import org.apache.commons.lang3.tuple.Triple;
+import net.minecraftforge.client.model.geometry.IModelGeometry;
 
-public class AntimatterModelLoader implements IModelLoader<AntimatterModel> {
-
-    public static AntimatterModelLoader MAIN = new AntimatterModelLoader(new ResourceLocation(Ref.ID, "main"));
-    public static DynamicModelLoader DYNAMIC = new DynamicModelLoader(new ResourceLocation(Ref.ID, "dynamic"));
+public class AntimatterModelLoader implements IModelLoader<AntimatterModel>, IAntimatterObject {
 
     protected ResourceLocation loc;
 
     public AntimatterModelLoader(ResourceLocation loc) {
         this.loc = loc;
+        AntimatterAPI.register(AntimatterModelLoader.class, this);
     }
 
     public ResourceLocation getLoc() {
         return loc;
+    }
+
+    @Override
+    public String getId() {
+        return getLoc().toString();
     }
 
     @Override
@@ -40,7 +44,7 @@ public class AntimatterModelLoader implements IModelLoader<AntimatterModel> {
     public AntimatterModel read(JsonDeserializationContext context, JsonObject json) {
         try {
             IUnbakedModel baseModel = (json.has("model") && json.get("model").isJsonObject()) ? context.deserialize(json.get("model"), BlockModel.class) : ModelUtils.getMissingModel();
-            return new AntimatterModel(baseModel);
+            return new AntimatterModel(baseModel, buildRotations(json));
         } catch (Exception e) {
             return onModelLoadingException(e);
         }
@@ -76,16 +80,27 @@ public class AntimatterModelLoader implements IModelLoader<AntimatterModel> {
             try {
                 AntimatterModel baseModel = super.read(context, json);
                 if (!json.has("config") || !json.get("config").isJsonArray()) return baseModel;
-                Int2ObjectOpenHashMap<Triple<String, IUnbakedModel, int[]>> configs = new Int2ObjectOpenHashMap<>();
+                Int2ObjectOpenHashMap<IModelGeometry<?>[]> configs = new Int2ObjectOpenHashMap<>();
                 for (JsonElement e : json.getAsJsonArray("config")) {
-                    if (!e.isJsonObject() || !e.getAsJsonObject().has("id") || !e.getAsJsonObject().has("model")) continue;
-                    IUnbakedModel model = context.deserialize(e.getAsJsonObject().get("model"), BlockModel.class);
-                    configs.put(e.getAsJsonObject().get("id").getAsInt(), Triple.of(e.toString(), model, buildRotations(e.getAsJsonObject())));
+                    if (!e.isJsonObject() || !e.getAsJsonObject().has("id") || !e.getAsJsonObject().has("models")) continue;
+                    int id = e.getAsJsonObject().get("id").getAsInt();
+                    configs.put(id, buildModels(context, e.getAsJsonObject().get("models").getAsJsonArray()));
                 }
-                return new DynamicModel(baseModel, configs);
+                String staticMapId = "";
+                if (json.has("staticMap") && json.get("staticMap").isJsonPrimitive()) staticMapId = json.get("staticMap").getAsString();
+                return new DynamicModel(baseModel, configs, staticMapId);
             } catch (Exception e) {
                 return onModelLoadingException(e);
             }
+        }
+
+        public IModelGeometry<?>[] buildModels(JsonDeserializationContext context, JsonArray array) {
+            IModelGeometry<?>[] models = new IModelGeometry<?>[array.size()];
+            for (int i = 0; i < array.size(); i++) {
+                if (!array.get(i).isJsonObject()) continue;
+                models[i] = new AntimatterModel(context.deserialize(array.get(i).getAsJsonObject(), BlockModel.class), buildRotations(array.get(i).getAsJsonObject()));
+            }
+            return models;
         }
     }
 }
